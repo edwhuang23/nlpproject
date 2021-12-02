@@ -194,6 +194,10 @@ def train():
             optimizer.zero_grad()
             le = preprocessing.LabelEncoder()
             outputs = model(torch.as_tensor(le.fit_transform(X_batch)))
+            # print(outputs)
+
+            # Put into loss function
+
             loss = error(outputs, torch.as_tensor(le.fit_transform(Y_batch)))
             loss.backward()
             optimizer.step()
@@ -244,6 +248,8 @@ def test():
 
     # Convert tags to indices
     ground_truth = [ tags[labels[i]] for i in range(len(labels)) ]
+
+    # Add logic 
 
     #print(f'The accuracy of the model is {100*accuracy_score(prediction, ground_truth):6.2f}%')
 
