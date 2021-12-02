@@ -46,43 +46,6 @@ class RNNTagger(nn.Module):
         return tag_scores
 
 def train():
-    # Pre-processing
-    # f = open(training_file, 'r', encoding="ISO-8859-1")
-    # trainingText = f.read().splitlines()
-    # f.close()
-
-    # TODO: Open each song file and obtain the segments_pitches for the song and organize
-    # song:[ section:[[12 chroma features], [], [], ... ], ... ]
-    trainingText = {} # filename: [ section:[[12 chroma features], [], [], ... ], ... ]
-    songDir = 'songs/'
-
-    for filename in os.listdir(songDir):
-        with h5py.File(os.path.join(songDir, filename), "r") as f:
-            # List all groups
-            print("Keys:", str(f.keys()))
-            analysis = list(f.keys())[0]
-
-            # Get the data keys
-            data_key = list(f[analysis])
-            data = f['analysis']
-            
-            for key in data_key:
-                if key == 'segments_pitches':
-                    #print("Key:", str(key))
-                    #print(data[key][()])
-                    song_segments = []
-                    section_length = 16
-
-                    for i in range(0, len(data[key][()]), section_length):
-                        song_segments.append(data[key][()][i:i+section_length])
-
-                    trainingText[filename] = song_segments
-                    print(len(data[key][()]))
-                    print(len(data[key][()][0]))
-        break
-    
-    #print(song_segments)
-
     # Enter genres into dictionary
     genre_dict = {}
     genre_file = 'genre.txt'
@@ -96,8 +59,35 @@ def train():
         key = line[0].strip()
         value = line[1].strip()
         genre_dict[key] = value
-        if key == 'TRAWLGG128F42884CA.h5':
-            print('found key')
+
+    # Open each song file and obtain the segments_pitches for the song and organize
+    # song:[ section:[[12 chroma features], [], [], ... ], ... ]
+    trainingText = {} # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
+    songDir = 'songs/'
+
+    for filename in os.listdir(songDir):
+        if filename[0:-3] not in genre_dict:
+            # Delete this file and remove key from genre_dict
+            print(filename)
+            os.remove(os.path.join(songDir, filename))
+
+        with h5py.File(os.path.join(songDir, filename), "r") as f:
+            # List all groups
+            #print("Keys:", str(f.keys()))
+            analysis = list(f.keys())[0]
+
+            # Get the data keys
+            data_key = list(f[analysis])
+            data = f['analysis']
+
+            song_segments = []
+            section_length = 16
+
+            for i in range(0, len(data['segments_pitches'][()]), section_length):
+                song_segments.append(data['segments_pitches'][()][i:i+section_length])
+
+            trainingText[filename] = song_segments
+            f.close()
 
     vocabFrequency = {}
     vocab = {}
@@ -120,7 +110,7 @@ def train():
             for segment in section:
                 # TODO: Round to tenths for segments_pitch to decrease space
                 for i in range(len(segment)):
-                    segment[i] = round(segment[i], None)
+                    segment[i] = round(segment[i] / 3.0, 1)
 
                 segment_hashed = str(segment)
                 if segment_hashed not in vocabFrequency:
@@ -128,9 +118,7 @@ def train():
                 vocabFrequency[segment_hashed] += 1
 
     for key in trainingText.keys():
-        if key not in genre_dict:
-            continue
-        genre = genre_dict[key]
+        genre = genre_dict[key[:-3]]
 
         for section in trainingText[key]:
             sentenceLength = 0
@@ -156,7 +144,7 @@ def train():
                 sentenceLength += 1
 
             maxSentenceLength = max(maxSentenceLength, sentenceLength)
-            
+            print(tagList)
             X.append(vocabList)
             Y.append(tagList)
 
@@ -172,8 +160,8 @@ def train():
     # Sentence padding
     for i in range(len(X)):
         while len(X[i]) < maxSentenceLength:
-            X[i].append(0)
-            Y[i].append(0)
+            X[i].append('')
+            Y[i].append('')
 
     # Create RNN model
     model = RNNTagger(maxSentenceLength, 70, len(vocab), len(tags))
@@ -191,7 +179,7 @@ def train():
     for i in range(len(X)):
         for j in range(maxSentenceLength):
             train_data.append([X[i][j], Y[i][j]])
-    print(train_data)
+    
     train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
 
     for epoch in range(NUM_EPOCHS):
@@ -206,7 +194,7 @@ def train():
             loss.backward()
             optimizer.step()
 
-    return model
+    torch.save(model.state_dict(), 'model.torch')
 
 def test():
     # # Load test file text
@@ -259,12 +247,6 @@ def test():
 def main():
     train()
     #test()
-
-    # if params.train:
-    #     model = train(params.training_file)
-    #     torch.save(model.state_dict(), params.model_file)
-    # else:
-    #     test(params.model_file, params.data_file, params.label_file)
     
 
 if __name__ == "__main__":
