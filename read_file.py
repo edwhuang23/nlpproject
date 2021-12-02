@@ -17,6 +17,7 @@
 
 import h5py
 import pickle, os
+from sklearn import preprocessing
 #from sklearn.metrics import accuracy_score
 import numpy as np
 import torch
@@ -63,7 +64,8 @@ def train():
     # Open each song file and obtain the segments_pitches for the song and organize
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
     trainingText = {} # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
-    songDir = 'songs/'
+    songDir = 'songs/training/'
+    segmentCount = 0
 
     for filename in os.listdir(songDir):
         if filename[0:-3] not in genre_dict:
@@ -74,20 +76,23 @@ def train():
         with h5py.File(os.path.join(songDir, filename), "r") as f:
             # List all groups
             #print("Keys:", str(f.keys()))
-            analysis = list(f.keys())[0]
+            # analysis = list(f.keys())[0]
 
             # Get the data keys
-            data_key = list(f[analysis])
             data = f['analysis']
 
             song_segments = []
             section_length = 16
+
+            segmentCount += len(data['segments_pitches'])
 
             for i in range(0, len(data['segments_pitches'][()]), section_length):
                 song_segments.append(data['segments_pitches'][()][i:i+section_length])
 
             trainingText[filename] = song_segments
             f.close()
+
+    print(segmentCount)
 
     vocabFrequency = {}
     vocab = {}
@@ -110,8 +115,8 @@ def train():
             for segment in section:
                 # TODO: Round to tenths for segments_pitch to decrease space
                 for i in range(len(segment)):
-                    segment[i] = round(segment[i] / 3.0, 1)
-
+                    segment[i] = round(segment[i] / 4.0, 1) #  Maybe 4.5 or (20/3) for 12*2^11 choices
+                
                 segment_hashed = str(segment)
                 if segment_hashed not in vocabFrequency:
                     vocabFrequency[segment_hashed] = 0
@@ -122,7 +127,7 @@ def train():
 
         for section in trainingText[key]:
             sentenceLength = 0
-            vocabList = []
+            segmentList = []
             tagList = []
             
             # Fill index and tag dictionary
@@ -134,7 +139,7 @@ def train():
                 if segment_hashed not in vocab:
                     vocab[segment_hashed] = len(vocab)
 
-                vocabList.append(segment_hashed)
+                segmentList.append(segment_hashed)
 
                 if tag not in tags:
                     tags[tag] = len(tags)
@@ -145,7 +150,7 @@ def train():
 
             maxSentenceLength = max(maxSentenceLength, sentenceLength)
             print(tagList)
-            X.append(vocabList)
+            X.append(segmentList)
             Y.append(tagList)
 
     # Save vocab locally to vocab.pickle and tag locally to tag.pickle
@@ -171,8 +176,8 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     # Repeatedly train RNN model
-    BATCH_SIZE = 240
-    NUM_EPOCHS = 10
+    BATCH_SIZE = 1
+    NUM_EPOCHS = 2
 
     train_data = []
 
@@ -186,11 +191,10 @@ def train():
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
         for i in range(0, len(X), BATCH_SIZE):
             X_batch, Y_batch = next(train_dataloader)
-            print(X_batch)
-            print(Y_batch)
             optimizer.zero_grad()
-            outputs = model(torch.tensor(X_batch))
-            loss = error(outputs, Y_batch.clone().detach())
+            le = preprocessing.LabelEncoder()
+            outputs = model(torch.as_tensor(le.fit_transform(X_batch)))
+            loss = error(outputs, torch.as_tensor(le.fit_transform(Y_batch)))
             loss.backward()
             optimizer.step()
 
