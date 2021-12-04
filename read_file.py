@@ -16,7 +16,8 @@
 
 
 import h5py
-import pickle, os
+import pickle, os, argparse
+from numba import jit, cuda
 from sklearn import preprocessing
 #from sklearn.metrics import accuracy_score
 import numpy as np
@@ -47,7 +48,7 @@ class RNNTagger(nn.Module):
         tag_scores = self.softmax(tag_space)
         return tag_scores
 
-def train():
+def train(seg_comp_mode):
     # Enter genres into dictionary
     unka = [ 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
     UNKA = '[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]'
@@ -72,7 +73,6 @@ def train():
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
     trainingText = {} # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/training/'
-    # segmentCount = 0
     duration_info = { }
 
     for filename in os.listdir(songDir):
@@ -128,7 +128,6 @@ def train():
             # trainingText[filename] = song_sections
             # f.close()
 
-    # print(segmentCount)
     durations_pickle = open('train_durations.pickle', 'wb')
     pickle.dump(duration_info, durations_pickle)
     durations_pickle.close()
@@ -252,7 +251,6 @@ def train():
             # train_data.append([X[i][j], Y[i][j]])
     
     # train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
-    compilation_mode = 'POPULAR VOTE'
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
@@ -272,7 +270,7 @@ def train():
                 print(len(section))
                 # print(genres_indexed)
                 # input()
-                dist_out = distribution_compiler(genre_scores, compilation_mode, genres_indexed, duration_info[song][i])
+                dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
                 print("Printing dist_out now:")
                 print(dist_out)
                 # input()
@@ -291,13 +289,14 @@ def train():
             # loss = error(outputs, torch.as_tensor(le.fit_transform(Y_batch)))
             # loss.backward()
             # optimizer.step()
-            
-    torch.save(model.state_dict(), 'model.torch')
+    
+    model_filename = 'model_' + compilation_mode + '.torch'
+    torch.save(model.state_dict(), model_filename)
     return
 
 def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_duration_info):
     softmax = nn.Softmax(dim=-1)
-    if compilation_mode == 'POPULAR VOTE':
+    if compilation_mode == 'PV':
         genre_counts = [ 0 for genre in genres_indexed ]
         num_segments = len(genre_scores)
         for seg_dist in genre_scores:
@@ -331,7 +330,7 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
         # print(dist_tensor)
         return dist_tensor
     
-    if compilation_mode == 'WEIGHTED POPULAR VOTE':
+    if compilation_mode == 'WPV':
         sec_duration = 0.0
         for seg_dur in sec_duration_info:
             sec_duration += seg_dur
@@ -351,7 +350,7 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
             genre_counts[most_likely_genre] += seg_weight
         return torch.tensor(genre_counts, dtype=torch.float, requires_grad=True)
         
-    if compilation_mode == 'GENRE FREQUENCY':
+    if compilation_mode == 'GF':
         genre_counts = [ 0.0 for genre in genres_indexed ]
         num_segments = len(genre_scores)
         for seg_dist in genre_scores:
@@ -360,7 +359,7 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
         count_tensor = torch.tensor(genre_counts, dtype=float, requires_grad=True)
         return count_tensor.div(num_segments)
         
-    if compilation_mode == 'WEIGHTED GENRE FREQUENCY':
+    if compilation_mode == 'WGF':
         sec_duration = 0.0
         for seg_dur in sec_duration_info:
             sec_duration += seg_dur
@@ -373,41 +372,144 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
                 genre_counts[genre_idx] += seg_dist[genre_idx] * seg_weight
         return torch.tensor(genre_counts, dtype=float, requires_grad=True)
 
-def test():
-    SECTION_LENGTH = 16
+def test(seg_comp_mode, sec_comp_mode):
     # Load test songs in same format as training songs
     testingText = {} # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/testing/'
-    count = 0
-
+    duration_info = { }
+    segmentCount = 0
+    
     for filename in os.listdir(songDir):
-        count += 1
+        if '.h5' not in filename: continue
+        print(filename)
         with h5py.File(os.path.join(songDir, filename), "r") as f:
             # Get the data keys
             data = f['analysis']
+            if len(data['sections_start']) == 0: 
+                f.close()
+                continue
+            song_end = f['analysis']['songs'][()][0][3]
+            duration_info[filename] = [] # [ section 1: [segment 1 duration, ... ], ... ]
+            song_sections = [] # [ section 1: [ segment data], ... ] ]
+            first_seg_idx = 0
+            for sec_end in data['sections_start']:
+                if sec_end == 0.0: continue
+                segments_dur = []
+                last_seg_idx = first_seg_idx
+                while last_seg_idx < len(data['segments_start']):
+                    if data['segments_start'][last_seg_idx] < sec_end : last_seg_idx += 1
+                    else : break
+                last_seg_idx -= 1
+                i = first_seg_idx
+                while i <= last_seg_idx:
+                    seg_start = data['segments_start'][i]
+                    if i+1 == len(data['segments_start']) : seg_end = song_end
+                    else : seg_end = data['segments_start'][i+1]
+                    seg_duration = seg_end - seg_start
+                    segments_dur.append(seg_duration)
+                    i += 1
+                section = data['segments_pitches'][first_seg_idx:last_seg_idx]
 
-            song_segments = []
+                if len(section) > 0:
+                    song_sections.append(section)
+                    segmentCount += len(section)
+                    duration_info[filename].append(segments_dur)
+ 
+                first_seg_idx = last_seg_idx + 1
+                if first_seg_idx >= len(data['segments_start']) : break
+            if first_seg_idx < len(data['segments_start']):
+                # now to grab the last section
+                i = first_seg_idx
+                while i < len(data['segments_start']):
+                    seg_start = data['segments_start'][i]
+                    if i+1 == len(data['segments_start']) : seg_end = song_end
+                    else : seg_end = data['segments_start'][i+1]
+                    seg_duration = seg_end - seg_start
+                    segments_dur.append(seg_duration)
+                    i += 1
+                section = data['segments_pitches'][first_seg_idx:]
 
-            for i in range(0, len(data['segments_pitches'][()]), SECTION_LENGTH):
-                song_segments.append(data['segments_pitches'][()][i:i+SECTION_LENGTH])
-
-            testingText[filename] = song_segments
+                if len(section) > 0:
+                    song_sections.append(section)
+                    segmentCount += len(section)
+                    duration_info[filename].append(segments_dur)
+            testingText[filename] = song_sections
             f.close()
-        if count == 30:
-            break
 
-    # Load word2idc dictionary
-    vocabPickle = open("vocab.pickle", "rb")
-    vocab = pickle.load(vocabPickle)
+    print(segmentCount)
+
+    # Dump testing_durations
+    durations_pickle = open('testing_durations.pickle', 'wb')
+    pickle.dump(duration_info, durations_pickle)
+    durations_pickle.close()
+
+    # Load vocab dictionary
+    vocabPickle = open("vocab-4.0.pickle", "rb")
+    vocab_indexed = pickle.load(vocabPickle)
     vocabPickle.close()
 
+    unka = [ 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+    UNKA = '[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]'
+
+    # Replace with UNKA if not in vocab
+    for song in testingText.keys():
+        for section in testingText[song]:
+            for i in range(len(section)):
+                # Round to tenths for segments_pitch to decrease space of possible segments
+                section[i] = [ round(chroma / 4.0, 1) for chroma in section[i] ] #  Maybe 4.5 or (20/3) for 12*2^11 choices
+                seg_str = str(section[i])
+                if seg_str not in vocab_indexed:
+                    seg_str = UNKA
+                    section[i] = unka
+
+    # Dump testing_mod
+    testing_mod = open('testing_mod-4.0.pickle', 'wb')
+    pickle.dump(testingText, testing_mod)
+    testing_mod.close()
+
+    return
+
+    # # Load testing_mod
+    # testing_mod = open('testing_mod-4.0.pickle', "rb")
+    # test_mod = pickle.load(testing_mod)
+    # testing_mod.close()
+    # #print(test_mod)
+
+    # # Load testing_durations
+    # testing_durations = open('testing_durations.pickle', 'rb')
+    # duration_info = pickle.load(testing_durations)
+    # testing_durations.close()
+
+    # songDir = 'songs/testing/'
+
+    # for filename in os.listdir(songDir):
+    #     with h5py.File(os.path.join(songDir, filename), "r") as f:
+    #         # Get the data keys
+    #         data = f['analysis']
+    #         if len(duration_info[filename]) == len(data['sections_start']) : continue
+    #         print(filename)
+    #         print(len(duration_info[filename]))
+    #         print(len(data['sections_start']))
+    #         print(data['sections_start'][()])
+    #         print(data['segments_start'][()])
+
+    return
+
+    # Load genres
+    genrePickle = open("genres.pickle", "rb")
+    genres_indexed = pickle.load(genrePickle)
+    genrePickle.close()
+
+
     # Load tag2idc dictionary
-    tagsPickle = open('tags.pickle', 'rb')
+    tagsPickle = open('genres.pickle', 'rb')
     tags = pickle.load(tagsPickle)
     tagsPickle.close()
 
     #249
-    model = RNNTagger(SECTION_LENGTH, 70, len(vocab), len(tags))
+    EMBEDDING_DIM = 50
+    HIDDEN_DIM = 32
+    model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab), len(tags))
     model.load_state_dict(torch.load('model.torch'))
 
     # Obtain genres
@@ -480,10 +582,25 @@ def test():
     print(f'The accuracy of the model is {100*accuracy_score(prediction, ground_truth):6.2f}%')
 
 
-def main():
-    train()
-    #test()
+def main(params):
+    if params.train:
+        if params.gpu:
+            train_func = (jit)(train)
+            train_func(params.seg_comp_mode)
+        else:
+            train(params.seg_comp_mode)
+    else:
+        if params.gpu:
+            test_func = (jit)(test)
+            test_func(params.seg_comp_mode, params.sec_comp_mode)
+        else:
+            test(params.seg_comp_mode, params.sec_comp_mode)
     
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="HMM POS Tagger")
+    parser.add_argument("--train", action='store_const', const=True, default=False)
+    parser.add_argument("--gpu", action='store_const', const=True, default=False)
+    parser.add_argument('--seg_comp_mode', type=str, default='PV', help='PV, WPV, GF, or WGF')
+    parser.add_argument('--sec_comp_mode', type=str, default='PV', help='PV, WPV, GF, or WGF')
+    main(parser.parse_args())
