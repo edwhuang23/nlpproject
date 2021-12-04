@@ -71,6 +71,96 @@ def train(seg_comp_mode):
 
     # Open each song file and obtain the segments_pitches for the song and organize
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
+    songDir = 'songs/training/'
+    
+    vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
+    vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
+    genres_indexed = pickle.load( open("genres.pickle", "rb") )
+    genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
+    trainingText = pickle.load( open("sandbox/training_mod-4.0-1.pickle", "rb") )
+    duration_info = pickle.load( open("training_durations.pickle", "rb") )
+    
+    # Create RNN model
+    EMBEDDING_DIM = 50
+    HIDDEN_DIM = 32
+    model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
+    # error = nn.CrossEntropyLoss(ignore_index=0)
+
+    learning_rate = 0.001
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    loss_function = nn.NLLLoss()
+
+    # Repeatedly train RNN model
+    BATCH_SIZE = 1
+    NUM_EPOCHS = 2
+    
+    # train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
+    
+    for epoch in range(NUM_EPOCHS):
+        print("Epoch", epoch + 1, "/", NUM_EPOCHS)
+        for song in trainingText.keys():
+            genre = genre_dict[song[:-3]]
+            genre_idx = genres_indexed[genre]
+            genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
+            for i in range(len(trainingText[song])) :
+                section = trainingText[song][i]
+                model.zero_grad()
+                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
+                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
+                # tag_indexes = [tags_indexed[tag] for tag in tags]
+                # tag_tensor = torch.tensor(tag_indexes, dtype=torch.long)
+                genre_scores = model(segments_tensor)
+                print(genre_scores)
+                print(len(section))
+                # print(genres_indexed)
+                # input()
+                dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
+                print("Printing dist_out now:")
+                print(dist_out)
+                # input()
+                loss = loss_function(dist_out, genre_tensor)
+                loss.backward()
+                optimizer.step()
+        # print("Epoch", epoch + 1, "/", NUM_EPOCHS)
+        # for i in range(0, len(X), BATCH_SIZE):
+            # X_batch, Y_batch = next(train_dataloader)
+            # optimizer.zero_grad()
+            # le = preprocessing.LabelEncoder()
+            # outputs = model(torch.as_tensor(le.fit_transform(X_batch)))
+            # print(outputs)
+            # # Put into loss function
+
+            # loss = error(outputs, torch.as_tensor(le.fit_transform(Y_batch)))
+            # loss.backward()
+            # optimizer.step()
+    
+    model_filename = 'model_' + seg_comp_mode + '.torch'
+    torch.save(model.state_dict(), model_filename)
+    return
+
+def preprocessing():
+    # Enter genres into dictionary
+    unka = [ 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+    UNKA = '[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]'
+    # for i in range(len(unka)): unka[i] = round(unka[i] / 4.0, 1) * 10 #  Maybe 4.5 or (20/3) for 12*2^11 choices
+    # UNKA = str(unka)
+    print(UNKA)
+    # input()
+    genre_dict = {}
+    genre_file = 'genre.txt'
+
+    f = open(genre_file, 'r', encoding="ISO-8859-1")
+    genre = f.read().splitlines()
+    f.close()
+
+    for line in genre:
+        line = line.split()
+        key = line[0].strip()
+        value = line[1].strip()
+        genre_dict[key] = value
+
+    # Open each song file and obtain the segments_pitches for the song and organize
+    # song:[ section:[[12 chroma features], [], [], ... ], ... ]
     trainingText = { } # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/training/'
     segmentCount = 0
@@ -199,21 +289,6 @@ def train(seg_comp_mode):
                     vocab_freq[seg_str] = 0
                 vocab_freq[seg_str] += 1
 
-
-            # print(tagList)
-            # X.append(segmentList)
-            # Y.append(tagList)
-
-    # Save vocab locally to vocab.pickle and tag locally to tag.pickle
-    
-    # vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
-    # vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
-    # genres_indexed = pickle.load( open("genres.pickle", "rb") )
-    # genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
-    # trainingText = pickle.load( open("sandbox/training_mod-4.0-1.pickle", "rb") )
-    # duration_info = pickle.load( open("train_durations.pickle", "rb") )
-
-    
     vocab_pickle = open('vocab-4.0.pickle', 'wb')
     pickle.dump(vocab_indexed, vocab_pickle)
     vocab_pickle.close()
@@ -234,77 +309,9 @@ def train(seg_comp_mode):
     pickle.dump(trainingText, training_texts)
     training_texts.close()
 
-    # return
-    
-    # Sentence padding
-    # for i in range(len(X)):
-        # while len(X[i]) < maxSentenceLength:
-            # X[i].append('')
-            # Y[i].append('')
-
-    # Create RNN model
-    EMBEDDING_DIM = 50
-    HIDDEN_DIM = 32
-    model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
-    # error = nn.CrossEntropyLoss(ignore_index=0)
-
-    learning_rate = 0.001
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_function = nn.NLLLoss()
-
-    # Repeatedly train RNN model
-    BATCH_SIZE = 1
-    NUM_EPOCHS = 2
-
-    # train_data = []
-
-    # for i in range(len(X)):
-        # for j in range(maxSentenceLength):
-            # train_data.append([X[i][j], Y[i][j]])
-    
-    # train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
-    
-    for epoch in range(NUM_EPOCHS):
-        print("Epoch", epoch + 1, "/", NUM_EPOCHS)
-        for song in trainingText.keys():
-            genre = genre_dict[song[:-3]]
-            genre_idx = genres_indexed[genre]
-            genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
-            for i in range(len(trainingText[song])) :
-                section = trainingText[song][i]
-                model.zero_grad()
-                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
-                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
-                # tag_indexes = [tags_indexed[tag] for tag in tags]
-                # tag_tensor = torch.tensor(tag_indexes, dtype=torch.long)
-                genre_scores = model(segments_tensor)
-                print(genre_scores)
-                print(len(section))
-                # print(genres_indexed)
-                # input()
-                dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-                print("Printing dist_out now:")
-                print(dist_out)
-                # input()
-                loss = loss_function(dist_out, genre_tensor)
-                loss.backward()
-                optimizer.step()
-        # print("Epoch", epoch + 1, "/", NUM_EPOCHS)
-        # for i in range(0, len(X), BATCH_SIZE):
-            # X_batch, Y_batch = next(train_dataloader)
-            # optimizer.zero_grad()
-            # le = preprocessing.LabelEncoder()
-            # outputs = model(torch.as_tensor(le.fit_transform(X_batch)))
-            # print(outputs)
-            # # Put into loss function
-
-            # loss = error(outputs, torch.as_tensor(le.fit_transform(Y_batch)))
-            # loss.backward()
-            # optimizer.step()
-    
-    model_filename = 'model_' + compilation_mode + '.torch'
-    torch.save(model.state_dict(), model_filename)
     return
+
+
 
 def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_duration_info):
     softmax = nn.Softmax(dim=-1)
@@ -320,27 +327,9 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
                     highest_prob = genre_prob
                     most_likely_genre = genre_idx
             genre_counts[most_likely_genre] += 1
-        #genre_counts_tensor = torch.tensor(genre_counts, dtype=torch.float)
-        #print(genre_counts_tensor)
-        #print(torch.nn.functional.normalize(genre_counts_tensor))
-        genre_dist = [ count / num_segments for count in genre_counts ]
-        
-        # genre_counts_tensor = torch.tensor(genre_counts, dtype=torch.float)
-        # norm = genre_counts_tensor.norm(p=2, dim=-1, keepdim=True)
-        # gct_norm = genre_counts_tensor.div(num_segments)
-        # print(genre_counts_tensor)
-        # print(genre_dist)
-        # print(gct_norm)
-        
-        # input()
-        dist_tensor = torch.tensor(genre_dist, dtype=torch.float, requires_grad=True)
-        # print(dist_tensor)
-        # dist_tensor_sftmax = softmax(dist_tensor)
-        # print(dist_tensor_sftmax)
-        # input()
-        # dist_tensor.grad_fn = genre_scores.grad_fn
-        # print(dist_tensor)
-        return dist_tensor
+        # genre_dist = [ count / num_segments for count in genre_counts ]
+        dist_tensor = torch.tensor(genre_counts, dtype=torch.float, requires_grad=True)
+        return dist_tensor.div(num_segments)
     
     if compilation_mode == 'WPV':
         sec_duration = 0.0
@@ -358,9 +347,13 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
                 if genre_prob > highest_prob:
                     highest_prob = genre_prob
                     most_likely_genre = genre_idx
-            seg_weight = sec_duration_info[i] / sec_duration
-            genre_counts[most_likely_genre] += seg_weight
-        return torch.tensor(genre_counts, dtype=torch.float, requires_grad=True)
+            # seg_weight = sec_duration_info[i] / sec_duration
+            # genre_counts[most_likely_genre] += seg_weight
+            genre_counts[most_likely_genre] += sec_duration_info[i]
+        count_tensor = torch.tensor(genre_counts, dtype=torch.float, requires_grad=True).div(sec_duration)
+        approx1 = 0.0
+        for prob in count_tensor : approx1 += prob
+        return count_tensor.div(approx1)
         
     if compilation_mode == 'GF':
         genre_counts = [ 0.0 for genre in genres_indexed ]
@@ -379,10 +372,12 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
         num_segments = len(genre_scores)
         for i in range(num_segments):
             seg_dist = genre_scores[i]
-            seg_weight = sec_duration_info[i] / sec_duration
             for genre_idx in range(len(seg_dist)):
-                genre_counts[genre_idx] += seg_dist[genre_idx] * seg_weight
-        return torch.tensor(genre_counts, dtype=float, requires_grad=True)
+                genre_counts[genre_idx] += seg_dist[genre_idx] * sec_duration_info[i]
+        count_tensor = torch.tensor(genre_counts, dtype=float, requires_grad=True).div(sec_duration)
+        approx1 = 0.0
+        for prob in count_tensor : approx1 += prob
+        return count_tensor.div(approx1)
 
 def test(seg_comp_mode, sec_comp_mode):
     # Load test songs in same format as training songs
