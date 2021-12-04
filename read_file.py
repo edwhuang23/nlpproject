@@ -71,8 +71,9 @@ def train(seg_comp_mode):
 
     # Open each song file and obtain the segments_pitches for the song and organize
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
-    trainingText = {} # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
+    trainingText = { } # filename: [ section:[ segment:[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/training/'
+    segmentCount = 0
     duration_info = { }
 
     for filename in os.listdir(songDir):
@@ -82,16 +83,17 @@ def train(seg_comp_mode):
             # os.remove(os.path.join(songDir, filename))
 
         with h5py.File(os.path.join(songDir, filename), "r") as f:
-            # # List all groups
-            # print("Keys:", str(f.keys()))
-            # # analysis = list(f.keys())[0]
             print(filename)
-
-            # # Get the data keys
+            # Get the data keys
             data = f['analysis']
+            if len(data['sections_start']) == 0 :
+                print(filename, "has no sections!")
+                input()
+                # os.remove(os.path.join(songDir, filename))
+                continue
             song_end = f['analysis']['songs'][()][0][3]
-            duration_info[filename] = []
-            # song_sections = []
+            duration_info[filename] = [] # [ section 1: [segment 1 duration, ... ], ... ]
+            song_sections = [] # [ section 1: [ segment data], ... ] ]
             first_seg_idx = 0
             for sec_end in data['sections_start']:
                 if sec_end == 0.0: continue
@@ -102,38 +104,49 @@ def train(seg_comp_mode):
                     else : break
                 last_seg_idx -= 1
                 i = first_seg_idx
-                while i <= last_seg_idx :
+                while i <= last_seg_idx:
                     seg_start = data['segments_start'][i]
                     if i+1 == len(data['segments_start']) : seg_end = song_end
                     else : seg_end = data['segments_start'][i+1]
                     seg_duration = seg_end - seg_start
                     segments_dur.append(seg_duration)
                     i += 1
-                # section = data['segments_pitches'][first_seg_idx: last_seg_idx]
-                # # print(section)
-                duration_info[filename].append(segments_dur)
-                # print(data['segments_start'][last_seg_idx], sec_end)
-                # # input()
-                # song_sections.append(section)
-                first_seg_idx = last_seg_idx + 1
-                # segmentCount += len(section)
-                # if first_seg_idx >= len(data['segments_start']) : break
-            # if first_seg_idx < len(data['segments_start']):
-                # # now to grab the last section
-                # section = data['segments_pitches'][first_seg_idx:]
-                # # print(section)
-                # # input()
-                # song_sections.append(section)
-                # segmentCount += len(section)
-            # trainingText[filename] = song_sections
-            # f.close()
+                section = data['segments_pitches'][first_seg_idx:last_seg_idx]
 
-    durations_pickle = open('train_durations.pickle', 'wb')
+                if len(section) > 0:
+                    song_sections.append(section)
+                    segmentCount += len(section)
+                    duration_info[filename].append(segments_dur)
+ 
+                first_seg_idx = last_seg_idx + 1
+                if first_seg_idx >= len(data['segments_start']) : break
+            if first_seg_idx < len(data['segments_start']):
+                # now to grab the last section
+                i = first_seg_idx
+                while i < len(data['segments_start']):
+                    seg_start = data['segments_start'][i]
+                    if i+1 == len(data['segments_start']) : seg_end = song_end
+                    else : seg_end = data['segments_start'][i+1]
+                    seg_duration = seg_end - seg_start
+                    segments_dur.append(seg_duration)
+                    i += 1
+                section = data['segments_pitches'][first_seg_idx:]
+                
+                if len(section) > 0:
+                    song_sections.append(section)
+                    segmentCount += len(section)
+                    duration_info[filename].append(segments_dur)
+            trainingText[filename] = song_sections
+            f.close()
+
+    print(segmentCount)
+
+    # Dump testing_durations
+    durations_pickle = open('training_durations.pickle', 'wb')
     pickle.dump(duration_info, durations_pickle)
     durations_pickle.close()
     
-    return
-    # segmentFrequency = {}
+    segmentFrequency = {}
 
     # X = []
     # Y = []
@@ -150,77 +163,76 @@ def train(seg_comp_mode):
     # vocab = pickle.load( open("vocab-4.0.pickle", "rb") )
     
     # Get segmentFrequency for each segment
-    # for song in trainingText.keys():
-        # for section in trainingText[song]:
-            # for i in range(len(section)):
-                # # TODO: Round to tenths for segments_pitch to decrease space of possible segments
-                # section[i] = [ round(chroma / 4.0, 1) for chroma in section[i] ] #  Maybe 4.5 or (20/3) for 12*2^11 choices
-                # #print(section[i])
-                # seg_str = str(section[i])
-                # # print(section[i])
-                # # print(seg_str)
-                # # input()
-                # if seg_str not in segmentFrequency: segmentFrequency[seg_str] = 0
-                # segmentFrequency[seg_str] += 1
+    for song in trainingText.keys():
+        for section in trainingText[song]:
+            for i in range(len(section)):
+                # TODO: Round to tenths for segments_pitch to decrease space of possible segments
+                section[i] = [ round(chroma / 4.0, 1) for chroma in section[i] ] #  Maybe 4.5 or (20/3) for 12*2^11 choices
+                #print(section[i])
+                seg_str = str(section[i])
+                # print(section[i])
+                # print(seg_str)
+                # input()
+                if seg_str not in segmentFrequency : segmentFrequency[seg_str] = 0
+                segmentFrequency[seg_str] += 1
 
     # Now we can determine the vocabulary
-    # vocab_indexed = { UNKA : 0 }
-    # vocab_freq = { UNKA : 0 }
-    # genres_indexed = {}
-    # genres_freq = {}
-    # for song in trainingText.keys():
-        # genre = genre_dict[song[:-3]]
-        # if genre not in genres_indexed:
-            # genres_indexed[genre] = len(genres_indexed)
-            # genres_freq[genre] = 0
-        # genres_freq[genre] += 1
-        # for section in trainingText[song]:
-            # # sentence = []
-            # for i in range(len(section)):
-                # seg_str = str(section[i])
-                # if segmentFrequency[seg_str] < 3:
-                    # seg_str = UNKA
-                    # section[i] = unka
-                # if seg_str not in vocab_indexed:
-                    # vocab_indexed[seg_str] = len(vocab_indexed)
-                    # vocab_freq[seg_str] = 0
-                # vocab_freq[seg_str] += 1
+    vocab_indexed = { UNKA : 0 }
+    vocab_freq = { UNKA : 0 }
+    genres_indexed = {}
+    genres_freq = {}
+    for song in trainingText.keys():
+        genre = genre_dict[song[:-3]]
+        if genre not in genres_indexed:
+            genres_indexed[genre] = len(genres_indexed)
+            genres_freq[genre] = 0
+        genres_freq[genre] += 1
+        for j in range(len(trainingText[song])):
+            section = trainingText[song][j]
+            for i in range(len(section)):
+                seg_str = str(section[i])
+                if segmentFrequency[seg_str] < 3:
+                    seg_str = UNKA
+                    trainingText[song][j][i] = unka
+                if seg_str not in vocab_indexed:
+                    vocab_indexed[seg_str] = len(vocab_indexed)
+                    vocab_freq[seg_str] = 0
+                vocab_freq[seg_str] += 1
 
-                # sentence.append(seg_str)
 
-            # sentenceLength = len(sentence)
-            # maxSentenceLength = max(maxSentenceLength, sentenceLength)
             # print(tagList)
             # X.append(segmentList)
             # Y.append(tagList)
 
     # Save vocab locally to vocab.pickle and tag locally to tag.pickle
     
-    vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
-    vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
-    genres_indexed = pickle.load( open("genres.pickle", "rb") )
-    genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
-    trainingText = pickle.load( open("sandbox/training_mod-4.0-1.pickle", "rb") )
-    
-    # vocab_pickle = open('vocab-4.0.pickle', 'wb')
-    # pickle.dump(vocab_indexed, vocab_pickle)
-    # vocab_pickle.close()
-    
-    # vocab_freq_pickle = open('vocab_freq-4.0.pickle', 'wb')
-    # pickle.dump(vocab_freq, vocab_freq_pickle)
-    # vocab_freq_pickle.close()
+    # vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
+    # vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
+    # genres_indexed = pickle.load( open("genres.pickle", "rb") )
+    # genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
+    # trainingText = pickle.load( open("sandbox/training_mod-4.0-1.pickle", "rb") )
+    # duration_info = pickle.load( open("train_durations.pickle", "rb") )
 
-    # genres_pickle = open('genres.pickle', 'wb')
-    # pickle.dump(genres_indexed, genres_pickle)
-    # genres_pickle.close()
     
-    # genres_freq_pickle = open('genres_freq.pickle', 'wb')
-    # pickle.dump(genres_freq, genres_freq_pickle)
-    # genres_freq_pickle.close()
+    vocab_pickle = open('vocab-4.0.pickle', 'wb')
+    pickle.dump(vocab_indexed, vocab_pickle)
+    vocab_pickle.close()
     
-    # training_texts = open('training_mod-4.0.pickle', 'wb')
-    # pickle.dump(trainingText, training_texts)
-    # training_texts.close()
+    vocab_freq_pickle = open('vocab_freq-4.0.pickle', 'wb')
+    pickle.dump(vocab_freq, vocab_freq_pickle)
+    vocab_freq_pickle.close()
+
+    genres_pickle = open('genres.pickle', 'wb')
+    pickle.dump(genres_indexed, genres_pickle)
+    genres_pickle.close()
+    
+    genres_freq_pickle = open('genres_freq.pickle', 'wb')
+    pickle.dump(genres_freq, genres_freq_pickle)
+    genres_freq_pickle.close()
+    
+    training_texts = open('training_mod-4.0.pickle', 'wb')
+    pickle.dump(trainingText, training_texts)
+    training_texts.close()
 
     # return
     
