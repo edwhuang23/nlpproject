@@ -481,31 +481,29 @@ def test(seg_comp_mode, sec_comp_mode):
 
     return
 
-    # # Load testing_mod
-    # testing_mod = open('testing_mod-4.0.pickle', "rb")
-    # test_mod = pickle.load(testing_mod)
-    # testing_mod.close()
-    # #print(test_mod)
+    # Load testing_mod
+    testing_mod = open('testing_mod-4.0.pickle', "rb")
+    test_mod = pickle.load(testing_mod)
+    testing_mod.close()
+    #print(test_mod)
 
-    # # Load testing_durations
-    # testing_durations = open('testing_durations.pickle', 'rb')
-    # duration_info = pickle.load(testing_durations)
-    # testing_durations.close()
+    # Load testing_durations
+    testing_durations = open('testing_durations.pickle', 'rb')
+    duration_info = pickle.load(testing_durations)
+    testing_durations.close()
 
-    # songDir = 'songs/testing/'
+    songDir = 'songs/testing/'
 
-    # for filename in os.listdir(songDir):
-    #     with h5py.File(os.path.join(songDir, filename), "r") as f:
-    #         # Get the data keys
-    #         data = f['analysis']
-    #         if len(duration_info[filename]) == len(data['sections_start']) : continue
-    #         print(filename)
-    #         print(len(duration_info[filename]))
-    #         print(len(data['sections_start']))
-    #         print(data['sections_start'][()])
-    #         print(data['segments_start'][()])
-
-    return
+    for filename in os.listdir(songDir):
+        with h5py.File(os.path.join(songDir, filename), "r") as f:
+            # Get the data keys
+            data = f['analysis']
+            if len(duration_info[filename]) == len(data['sections_start']) : continue
+            print(filename)
+            print(len(duration_info[filename]))
+            print(len(data['sections_start']))
+            print(data['sections_start'][()])
+            print(data['segments_start'][()])
 
     # Load genres
     genrePickle = open("genres.pickle", "rb")
