@@ -77,7 +77,7 @@ def train(seg_comp_mode):
     vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
     genres_indexed = pickle.load( open("genres.pickle", "rb") )
     genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
-    trainingText = pickle.load( open("sandbox/training_mod-4.0-1.pickle", "rb") )
+    trainingText = pickle.load( open("training_mod-4.0.pickle", "rb") )
     duration_info = pickle.load( open("training_durations.pickle", "rb") )
     
     # Create RNN model
@@ -98,7 +98,9 @@ def train(seg_comp_mode):
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
+        progress = 0
         for song in trainingText.keys():
+            if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
             genre = genre_dict[song[:-3]]
             genre_idx = genres_indexed[genre]
             genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
@@ -110,17 +112,19 @@ def train(seg_comp_mode):
                 # tag_indexes = [tags_indexed[tag] for tag in tags]
                 # tag_tensor = torch.tensor(tag_indexes, dtype=torch.long)
                 genre_scores = model(segments_tensor)
-                print(genre_scores)
-                print(len(section))
+                # print(genre_scores)
+                # print(len(section))
                 # print(genres_indexed)
                 # input()
                 dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-                print("Printing dist_out now:")
-                print(dist_out)
+                # print("Printing dist_out now:")
+                # print(dist_out)
                 # input()
                 loss = loss_function(dist_out, genre_tensor)
                 loss.backward()
                 optimizer.step()
+            progress += 1
+            
         # print("Epoch", epoch + 1, "/", NUM_EPOCHS)
         # for i in range(0, len(X), BATCH_SIZE):
             # X_batch, Y_batch = next(train_dataloader)
