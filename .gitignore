@@ -1,6 +1,6 @@
 songs/
 env/
-songs.tar.gz
+dataset.tar.gz
 training_mod-4.0.pickle
 testing_mod-4.0.pickle
 
