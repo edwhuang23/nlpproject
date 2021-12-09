@@ -91,8 +91,7 @@ def train(seg_comp_mode):
     loss_function = nn.NLLLoss()
 
     # Repeatedly train RNN model
-    BATCH_SIZE = 1
-    NUM_EPOCHS = 2
+    NUM_EPOCHS = 6
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
@@ -114,7 +113,7 @@ def train(seg_comp_mode):
                 optimizer.step()
             progress += 1
     
-    model_filename = 'model_' + seg_comp_mode + '.torch'
+    model_filename = 'model_' + seg_comp_mode + '_' + NUM_EPOCHS + '.torch'
     torch.save(model.state_dict(), model_filename)
     return
 
