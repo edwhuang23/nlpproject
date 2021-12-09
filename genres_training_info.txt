@@ -1,0 +1,22 @@
+21 different genres
+1269 Pop_Rock songs in the training data
+124 Country songs in the training data
+174 Latin songs in the training data
+26 Vocal songs in the training data
+161 Rap songs in the training data
+130 Religious songs in the training data
+67 New_Age songs in the training data
+112 Jazz songs in the training data
+24 Comedy_Spoken songs in the training data
+81 RnB songs in the training data
+150 Electronic songs in the training data
+76 Blues songs in the training data
+81 Reggae songs in the training data
+6 Avant_Garde songs in the training data
+33 Folk songs in the training data
+105 International songs in the training data
+4 Classical songs in the training data
+16 Easy_Listening songs in the training data
+18 Stage songs in the training data
+6 Children songs in the training data
+1 Holiday songs in the training data

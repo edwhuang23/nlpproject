@@ -333,39 +333,9 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
         for prob in count_tensor : approx1 += prob
         return count_tensor.div(approx1)
 
-def test(seg_comp_mode, sec_comp_mode):
-    # Uncomment following to preprocess testing data. Return right after preprocessing.
-    # preprocessing(False)
+def test(seg_comp_mode, sec_comp_mode, model_name):
 
-    # Load vocab dictionary. hashed segment: index
-    vocabPickle = open("vocab-4.0.pickle", "rb") 
-    vocab = pickle.load(vocabPickle)
-    vocabPickle.close()
-
-    # Load genres. genre: index
-    genrePickle = open("genres.pickle", "rb")
-    genres = pickle.load(genrePickle)
-    genrePickle.close()
-
-    # Load testingText. 
-    testing_mod = open('testing_mod-4.0.pickle', "rb")
-    testingText = pickle.load(testing_mod)
-    testing_mod.close()
-
-    # Load testing_durations. Same structure as testingText but with durations.
-    testing_durations = open('testing_durations.pickle', 'rb')
-    duration_info = pickle.load(testing_durations)
-    testing_durations.close()
-
-    songDir = 'songs/testing/'
-
-    #249
-    EMBEDDING_DIM = 50
-    HIDDEN_DIM = 32
-    model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab), len(genres))
-    model.load_state_dict(torch.load('model_PV.torch'))
-
-    # Obtain filename mapped to genre
+    # read in genre dictionary from genre.txt
     genre_dict = {}
     genre_file = 'genre.txt'
 
@@ -378,54 +348,71 @@ def test(seg_comp_mode, sec_comp_mode):
         key = line[0].strip()
         value = line[1].strip()
         genre_dict[key] = value
-
-    # Convert word to indices
-    X_test = []
-    Y_test = []
-
-    for song in testingText.keys():
-        for section in testingText[song]:
-            for segment in section:
-                segment_hashed = str(segment)
-                if segment_hashed not in vocab:
-                    X_test.append(vocab[UNKA])
-                else:
-                    X_test.append(vocab[segment_hashed])
-        Y_test.append(genre_dict[song[:-3]])
-        break
-
-    X_test_expanded_pred = model(torch.tensor(X_test))
-    X_test_expanded_pred = torch.argmax(X_test_expanded_pred,-1).cpu().numpy()
-
-    # Convert tags to indices
-    ground_truth = [ genres[Y_test[i]] for i in range(len(Y_test)) ]
-
-    # Convert predictions on sections to predictions on songs
-    prediction = []
-    X_test_expanded_pred_iter = 0
-
-    for num in num_sections:
-        votes = {}
-        for i in range(num):
-            if X_test_expanded_pred[X_test_expanded_pred_iter] not in votes:
-                votes[X_test_expanded_pred[X_test_expanded_pred_iter]] = 1
-            else:
-                votes[X_test_expanded_pred[X_test_expanded_pred_iter]] += 1
-            X_test_expanded_pred_iter += 1
-        
-        highest_count = 0
-        highest_genre = ''
-        for genre in votes:
-            if votes[genre] > highest_count:
-                highest_count = votes[genre]
-                highest_genre = genre
-        
-        prediction.append(highest_genre)
     
-    print(prediction)
-    print(ground_truth)
+    # song:[ section:[[12 chroma features], [], [], ... ], ... ]
+    songDir = 'songs/testing/'
+    
+    vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
+    # vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
+    genres_indexed = pickle.load( open("genres.pickle", "rb") )
+    # print(len(genres_indexed), 'different genres')
+    # genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
+    # for genre in genres_freq.keys():
+        # print(genres_freq[genre], genre, 'songs in the training data')
+    testingText = pickle.load( open("testing_mod-4.0.pickle", "rb") )
+    duration_info = pickle.load( open("testing_durations.pickle", "rb") )
+    
+    # Create RNN model
+    EMBEDDING_DIM = 50
+    HIDDEN_DIM = 32
+    model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
+    # error = nn.CrossEntropyLoss(ignore_index=0)
+    model.load_state_dict(torch.load(model_name))
 
-    print(f'The accuracy of the model is {100*accuracy_score(prediction, ground_truth):6.2f}%')
+    pred_list = []
+    ground_truth = []
+    progress = 0
+    with torch.no_grad():
+        for song in testingText.keys():
+            if progress % 50 == 0 : print("Tested", progress, "out of", len(testingText.keys()), "songs")
+            genre = genre_dict[song[:-3]]
+            genre_idx = genres_indexed[genre]
+            ground_truth.append(genre_idx)
+            sec_dists_out = []
+            sec_dur_info = []
+            for i in range(len(testingText[song])) :
+                section = testingText[song][i]
+                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
+                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
+                genre_scores = model(segments_tensor)
+                sec_dists_out.append(distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i]))
+                sec_dur_info.append(0.0)
+                for seg_dur in duration_info[song][i] : sec_dur_info[i] += seg_dur
+            song_dist_out = distribution_compiler(sec_dists_out, sec_comp_mode, genres_indexed, sec_dur_info)
+            pred = -1
+            max_prob = -1.0
+            for i in range(len(genres_indexed)):
+                prob = song_dist_out[i].numpy()
+                if prob > max_prob:
+                    pred = i
+                    max_prob = prob
+            pred_list.append(pred)
+            print(pred)
+            # i = 0
+            # for genre in genres_indexed.keys():
+                # if i == pred:
+                    # print(genre)
+                    # break
+                # else : i += 1
+            # input()
+            progress += 1
+            
+    # compute accuracy
+    preds_pickle = open('model_name' + '.out_pickle', 'wb')
+    pickle.dump(pred_list, preds_pickle)
+    preds_pickle.close()
+    print(f'The accuracy of the model is {100*accuracy_score(pred_list, ground_truth):6.2f}%')
+    return
 
 
 def main(params):
@@ -438,9 +425,9 @@ def main(params):
     else:
         if params.gpu:
             test_func = (jit)(test)
-            test_func(params.seg_comp_mode, params.sec_comp_mode)
+            test_func(params.seg_comp_mode, params.sec_comp_mode, params.model_in)
         else:
-            test(params.seg_comp_mode, params.sec_comp_mode)
+            test(params.seg_comp_mode, params.sec_comp_mode, params.model_in)
     
 
 if __name__ == "__main__":
@@ -449,4 +436,5 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", action='store_const', const=True, default=False)
     parser.add_argument('--seg_comp_mode', type=str, default='PV', help='PV, WPV, GF, or WGF')
     parser.add_argument('--sec_comp_mode', type=str, default='PV', help='PV, WPV, GF, or WGF')
+    parser.add_argument('--model_in', type=str, default='model_PV.torch', help='provide the file name of a model')
     main(parser.parse_args())
