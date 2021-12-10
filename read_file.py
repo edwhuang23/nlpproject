@@ -16,7 +16,7 @@
 
 
 import h5py
-import pickle, os, argparse
+import pickle, os, argparse, random
 from numba import jit, cuda
 from sklearn import preprocessing
 from sklearn.metrics import accuracy_score
@@ -91,12 +91,14 @@ def train(seg_comp_mode):
     loss_function = nn.NLLLoss()
 
     # Repeatedly train RNN model
-    NUM_EPOCHS = 6
+    NUM_EPOCHS = 10
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
         progress = 0
-        for song in trainingText.keys():
+        trainingTextKeys = list(trainingText.keys())
+        random.shuffle(trainingTextKeys)
+        for song in trainingTextKeys:
             if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
             genre = genre_dict[song[:-3]]
             genre_idx = genres_indexed[genre]
@@ -112,9 +114,8 @@ def train(seg_comp_mode):
                 loss.backward()
                 optimizer.step()
             progress += 1
-    
-    model_filename = 'model_' + seg_comp_mode + '_' + NUM_EPOCHS + '.torch'
-    torch.save(model.state_dict(), model_filename)
+        model_filename = 'model_' + seg_comp_mode + '_' + str(epoch + 1) + '.torch'
+        torch.save(model.state_dict(), model_filename)
     return
 
 def preprocessing(isTrain):
@@ -333,7 +334,6 @@ def distribution_compiler(genre_scores, compilation_mode, genres_indexed, sec_du
         return count_tensor.div(approx1)
 
 def test(seg_comp_mode, sec_comp_mode, model_name):
-
     # read in genre dictionary from genre.txt
     genre_dict = {}
     genre_file = 'genre.txt'
@@ -396,21 +396,14 @@ def test(seg_comp_mode, sec_comp_mode, model_name):
                     pred = i
                     max_prob = prob
             pred_list.append(pred)
-            print(pred)
-            # i = 0
-            # for genre in genres_indexed.keys():
-                # if i == pred:
-                    # print(genre)
-                    # break
-                # else : i += 1
-            # input()
             progress += 1
             
     # compute accuracy
     preds_pickle = open('model_name' + '.out_pickle', 'wb')
     pickle.dump(pred_list, preds_pickle)
     preds_pickle.close()
-    print(f'The accuracy of the model is {100*accuracy_score(pred_list, ground_truth):6.2f}%')
+    print("The accuracy of the model is %6.2f%%" % (accuracy_score(ground_truth, pred_list) * 100))
+    #print(f"The accuracy of the model is {100*accuracy_score(pred_list, ground_truth):6.2f}%")
     return
 
 
