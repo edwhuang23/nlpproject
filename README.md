@@ -28,7 +28,7 @@ Before we get to actual commands to execute our code, we will introduce the comm
 Train a model in PV segment compilation mode utilizing the GPU:
 
 `python read_file.py --train --gpu --seg_comp_mode PV`
-
+<br/><br/>
 
 Evaluate the `model_WGF_6.torch` model in PV segment compilation mode and WGF section compilation mode:
 
