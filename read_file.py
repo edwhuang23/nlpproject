@@ -51,7 +51,7 @@ class RNNTagger(nn.Module):
         tag_scores = self.softmax(tag_space)
         return tag_scores
 
-def train(seg_comp_mode):
+def train(seg_comp_mode, sec_comp_mode):
     # Uncomment following to preprocess training data. Return right after preprocessing.
     # preprocessing(True)
     
@@ -86,12 +86,12 @@ def train(seg_comp_mode):
     model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
     # error = nn.CrossEntropyLoss(ignore_index=0)
 
-    learning_rate = 0.001
+    learning_rate = 0.01
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_function = nn.NLLLoss()
 
     # Repeatedly train RNN model
-    NUM_EPOCHS = 6
+    NUM_EPOCHS = 2
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
@@ -101,19 +101,25 @@ def train(seg_comp_mode):
             genre = genre_dict[song[:-3]]
             genre_idx = genres_indexed[genre]
             genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
+            sec_dists = []
+            sec_dur_info = []
             for i in range(len(trainingText[song])) :
                 section = trainingText[song][i]
                 model.zero_grad()
                 segments_indcs = [vocab_indexed[str(segment)] for segment in section]
                 segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
                 genre_scores = model(segments_tensor)
-                dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-                loss = loss_function(dist_out, genre_tensor)
-                loss.backward()
-                optimizer.step()
+                sec_dists.append(distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i]))
+                sec_dur_info.append(0.0)
+                for seg_dur in duration_info[song][i] : sec_dur_info[i] += seg_dur
+            song_dist = distribution_compiler(sec_dists, sec_comp_mode, genres_indexed, sec_dur_info)
+            # print(song_dist)
+            loss = loss_function(song_dist, genre_tensor)
+            loss.backward()
+            optimizer.step()
             progress += 1
     
-    model_filename = 'model_' + seg_comp_mode + '_' + NUM_EPOCHS + '.torch'
+    model_filename = 'model_' + seg_comp_mode + '_' + sec_comp_mode + '_' + str(NUM_EPOCHS) + '.torch'
     torch.save(model.state_dict(), model_filename)
     return
 
@@ -418,9 +424,9 @@ def main(params):
     if params.train:
         if params.gpu:
             train_func = (jit)(train)
-            train_func(params.seg_comp_mode)
+            train_func(params.seg_comp_mode, params.sec_comp_mode)
         else:
-            train(params.seg_comp_mode)
+            train(params.seg_comp_mode, params.sec_comp_mode)
     else:
         if params.gpu:
             test_func = (jit)(test)
