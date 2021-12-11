@@ -120,9 +120,8 @@ def train(seg_comp_mode, sec_comp_mode):
             loss.backward()
             optimizer.step()
             progress += 1
-    
-    model_filename = 'model_' + seg_comp_mode + '_' + sec_comp_mode + '_' + str(NUM_EPOCHS) + '.torch'
-    torch.save(model.state_dict(), model_filename)
+        model_filename = 'model_' + seg_comp_mode + '_' + sec_comp_mode + '_' + str(epoch + 1) + '.torch'
+        torch.save(model.state_dict(), model_filename)
     return
 
 def preprocessing(isTrain):
