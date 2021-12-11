@@ -38,7 +38,7 @@ class RNNTagger(nn.Module):
 
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, dropout=0.0)
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=2, dropout=0.15)
 
         # The linear layer that maps from hidden state space to tag space
         self.hidden2tag = nn.Linear(hidden_dim, tagset_size)
@@ -86,12 +86,12 @@ def train(seg_comp_mode):
     model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
     # error = nn.CrossEntropyLoss(ignore_index=0)
 
-    learning_rate = 0.001
+    learning_rate = 0.01
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_function = nn.NLLLoss()
 
     # Repeatedly train RNN model
-    NUM_EPOCHS = 10
+    NUM_EPOCHS = 2
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
@@ -101,16 +101,17 @@ def train(seg_comp_mode):
         for song in trainingTextKeys:
             if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
             genre = genre_dict[song[:-3]]
-            genre_idx = genres_indexed[genre]
-            genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
             for i in range(len(trainingText[song])) :
                 section = trainingText[song][i]
                 model.zero_grad()
                 segments_indcs = [vocab_indexed[str(segment)] for segment in section]
                 segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
                 genre_scores = model(segments_tensor)
-                dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-                loss = loss_function(dist_out, genre_tensor)
+                genre_idx = [genres_indexed[genre]] * len(section)
+                genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
+                # dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
+                # print(dist_out)
+                loss = loss_function(genre_scores, genre_tensor)
                 loss.backward()
                 optimizer.step()
             progress += 1
@@ -396,6 +397,7 @@ def test(seg_comp_mode, sec_comp_mode, model_name):
                     pred = i
                     max_prob = prob
             pred_list.append(pred)
+            print(pred, genre_idx)
             progress += 1
             
     # compute accuracy
