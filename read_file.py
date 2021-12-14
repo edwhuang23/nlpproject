@@ -38,7 +38,7 @@ class RNNTagger(nn.Module):
 
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=2, dropout=0.15)
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=2, dropout=0.00)
 
         # The linear layer that maps from hidden state space to tag space
         self.hidden2tag = nn.Linear(hidden_dim, tagset_size)
@@ -54,6 +54,7 @@ class RNNTagger(nn.Module):
 def train(seg_comp_mode):
     # Uncomment following to preprocess training data. Return right after preprocessing.
     # preprocessing(True)
+    # return
     
     # Load data from genre.txt
     genre_dict = {} # Filename: genre
@@ -73,48 +74,69 @@ def train(seg_comp_mode):
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/training/'
     
-    vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
-    vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
-    genres_indexed = pickle.load( open("genres.pickle", "rb") )
-    genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
-    trainingText = pickle.load( open("training_mod-4.0.pickle", "rb") )
-    duration_info = pickle.load( open("training_durations.pickle", "rb") )
+    vocab_indexed = pickle.load( open("vocab-4.0_limited_pr.pickle", "rb") )
+    vocab_freq = pickle.load( open("vocab_freq-4.0_limited_pr.pickle", "rb") )
+    genres_indexed = pickle.load( open("genres_limited_pr.pickle", "rb") )
+    genres_freq = pickle.load( open("genres_freq_limited_pr.pickle", "rb") )
+    trainingText = pickle.load( open("training_mod-4.0_limited_pr.pickle", "rb") )
+    duration_info = pickle.load( open("training_durations_limited_pr.pickle", "rb") )
     
     # Create RNN model
-    EMBEDDING_DIM = 50
+    EMBEDDING_DIM = 12
     HIDDEN_DIM = 32
     model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
     # error = nn.CrossEntropyLoss(ignore_index=0)
 
     learning_rate = 0.01
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_function = nn.NLLLoss()
+    loss_function = nn.CrossEntropyLoss(ignore_index=0)
 
     # Repeatedly train RNN model
-    NUM_EPOCHS = 2
+    NUM_EPOCHS = 6
+    BATCH_SIZE = 120
+    train_data = []
+
+    for song in trainingText:
+        genre = genre_dict[song[:-3]]
+        for i in range(len(trainingText[song])):
+            section = trainingText[song][i]
+            for segment in section:
+                train_data.append([vocab_indexed[str(segment)], genres_indexed[genre]])
+
+    train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
-        progress = 0
-        trainingTextKeys = list(trainingText.keys())
-        random.shuffle(trainingTextKeys)
-        for song in trainingTextKeys:
-            if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
-            genre = genre_dict[song[:-3]]
-            for i in range(len(trainingText[song])) :
-                section = trainingText[song][i]
-                model.zero_grad()
-                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
-                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
-                genre_scores = model(segments_tensor)
-                genre_idx = [genres_indexed[genre]] * len(section)
-                genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
-                # dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-                # print(dist_out)
-                loss = loss_function(genre_scores, genre_tensor)
-                loss.backward()
-                optimizer.step()
-            progress += 1
+        for i in range(0, len(trainingText.keys()), BATCH_SIZE):
+            X_batch, Y_batch = next(train_dataloader)
+            model.zero_grad()
+            outputs = model(X_batch.clone().detach())
+            loss = loss_function(outputs, Y_batch.clone().detach())
+            loss.backward()
+            optimizer.step()
+
+        # trainingTextKeys = list(trainingText.keys())
+        # random.shuffle(trainingTextKeys)
+        # for song in trainingTextKeys:
+        #     if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
+        #     genre = genre_dict[song[:-3]]
+        #     for i in range(len(trainingText[song])):
+        #         section = trainingText[song][i]
+        #         model.zero_grad()
+        #         segments_indcs = [vocab_indexed[str(segment)] for segment in section]
+        #         segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
+        #         print('Segments Tensor', segments_tensor)
+        #         genre_scores = model(segments_tensor)
+        #         genre_idx = [genres_indexed[genre]] * len(section)
+        #         genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
+        #         # dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
+        #         # print(dist_out)
+        #         print('Genre Score', genre_scores)
+        #         print('Genre Tensor', genre_tensor)
+        #         loss = loss_function(genre_scores, genre_tensor)
+        #         loss.backward()
+        #         optimizer.step()
+        #     progress += 1
         model_filename = 'model_' + seg_comp_mode + '_' + str(epoch + 1) + '.torch'
         torch.save(model.state_dict(), model_filename)
     return
@@ -140,8 +162,15 @@ def preprocessing(isTrain):
     songDir = 'songs/training/' if isTrain else 'songs/testing/'
     segmentCount = 0
     duration_info = { }
+    numPopRock = 0
+    POP_ROCK_LIMIT = 125
 
     for filename in os.listdir(songDir):
+        if '.h5' not in filename:
+            continue
+        if numPopRock >= POP_ROCK_LIMIT and genre_dict[filename[0:-3]] == 'Pop_Rock':
+            continue
+        numPopRock += 1
         # if filename[0:-3] not in genre_dict:
             # # Delete this file and remove key from genre_dict
             # print(filename)
@@ -206,7 +235,7 @@ def preprocessing(isTrain):
     print(segmentCount)
 
     # Dump testing_durations
-    durations_pickle = open('training_durations.pickle' if isTrain else 'testing_durations.pickle', 'wb')
+    durations_pickle = open('training_durations_limited_pr.pickle' if isTrain else 'testing_durations.pickle', 'wb')
     pickle.dump(duration_info, durations_pickle)
     durations_pickle.close()
     
@@ -247,23 +276,23 @@ def preprocessing(isTrain):
 
     # Only dump if training
     if isTrain:
-        vocab_pickle = open('vocab-4.0.pickle', 'wb')
+        vocab_pickle = open('vocab-4.0.pickle_limited_pr', 'wb')
         pickle.dump(vocab_indexed, vocab_pickle)
         vocab_pickle.close()
         
-        vocab_freq_pickle = open('vocab_freq-4.0.pickle', 'wb')
+        vocab_freq_pickle = open('vocab_freq-4.0.pickle_limited_pr', 'wb')
         pickle.dump(vocab_freq, vocab_freq_pickle)
         vocab_freq_pickle.close()
 
-        genres_pickle = open('genres.pickle', 'wb')
+        genres_pickle = open('genres.pickle_limited_pr', 'wb')
         pickle.dump(genres_indexed, genres_pickle)
         genres_pickle.close()
         
-        genres_freq_pickle = open('genres_freq.pickle', 'wb')
+        genres_freq_pickle = open('genres_freq.pickle_limited_pr', 'wb')
         pickle.dump(genres_freq, genres_freq_pickle)
         genres_freq_pickle.close()
     
-    training_texts = open('training_mod-4.0.pickle' if isTrain else 'testing_mod-4.0.pickle', 'wb')
+    training_texts = open('training_mod-4.0.pickle_limited_pr' if isTrain else 'testing_mod-4.0.pickle', 'wb')
     pickle.dump(trainingText, training_texts)
     training_texts.close()
     return
@@ -352,9 +381,9 @@ def test(seg_comp_mode, sec_comp_mode, model_name):
     # song:[ section:[[12 chroma features], [], [], ... ], ... ]
     songDir = 'songs/testing/'
     
-    vocab_indexed = pickle.load( open("vocab-4.0.pickle", "rb") )
+    vocab_indexed = pickle.load( open("vocab-4.0_limited_pr.pickle", "rb") )
     # vocab_freq = pickle.load( open("vocab_freq-4.0.pickle", "rb") )
-    genres_indexed = pickle.load( open("genres.pickle", "rb") )
+    genres_indexed = pickle.load( open("genres_limited_pr.pickle", "rb") )
     # print(len(genres_indexed), 'different genres')
     # genres_freq = pickle.load( open("genres_freq.pickle", "rb") )
     # for genre in genres_freq.keys():
@@ -363,42 +392,42 @@ def test(seg_comp_mode, sec_comp_mode, model_name):
     duration_info = pickle.load( open("testing_durations.pickle", "rb") )
     
     # Create RNN model
-    EMBEDDING_DIM = 50
+    EMBEDDING_DIM = 12
     HIDDEN_DIM = 32
     model = RNNTagger(EMBEDDING_DIM, HIDDEN_DIM, len(vocab_indexed), len(genres_indexed))
-    # error = nn.CrossEntropyLoss(ignore_index=0)
     model.load_state_dict(torch.load(model_name))
 
     pred_list = []
     ground_truth = []
     progress = 0
-    with torch.no_grad():
-        for song in testingText.keys():
-            if progress % 50 == 0 : print("Tested", progress, "out of", len(testingText.keys()), "songs")
-            genre = genre_dict[song[:-3]]
-            genre_idx = genres_indexed[genre]
-            ground_truth.append(genre_idx)
-            sec_dists_out = []
-            sec_dur_info = []
-            for i in range(len(testingText[song])) :
-                section = testingText[song][i]
-                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
-                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
-                genre_scores = model(segments_tensor)
-                sec_dists_out.append(distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i]))
-                sec_dur_info.append(0.0)
-                for seg_dur in duration_info[song][i] : sec_dur_info[i] += seg_dur
-            song_dist_out = distribution_compiler(sec_dists_out, sec_comp_mode, genres_indexed, sec_dur_info)
-            pred = -1
-            max_prob = -1.0
-            for i in range(len(genres_indexed)):
-                prob = song_dist_out[i].numpy()
-                if prob > max_prob:
-                    pred = i
-                    max_prob = prob
-            pred_list.append(pred)
-            print(pred, genre_idx)
-            progress += 1
+    #with torch.no_grad():
+    for song in testingText.keys():
+        if progress % 50 == 0 : print("Tested", progress, "out of", len(testingText.keys()), "songs")
+        genre = genre_dict[song[:-3]]
+        genre_idx = genres_indexed[genre]
+        ground_truth.append(genre_idx)
+        sec_dists_out = []
+        sec_dur_info = []
+        for i in range(len(testingText[song])):
+            section = testingText[song][i]
+            segments_indcs = [ (vocab_indexed[UNKA] if str(segment) not in vocab_indexed else vocab_indexed[str(segment)]) for segment in section]
+            segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
+            genre_scores = model(segments_tensor)
+            print(genre_scores)
+            sec_dists_out.append(distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i]))
+            sec_dur_info.append(0.0)
+            for seg_dur in duration_info[song][i] : sec_dur_info[i] += seg_dur
+        song_dist_out = distribution_compiler(sec_dists_out, sec_comp_mode, genres_indexed, sec_dur_info)
+        pred = -1
+        max_prob = -1.0
+        for i in range(len(genres_indexed)):
+            prob = song_dist_out[i].detach().numpy()
+            if prob > max_prob:
+                pred = i
+                max_prob = prob
+        pred_list.append(pred)
+        #print(pred, genre_idx)
+        progress += 1
             
     # compute accuracy
     preds_pickle = open('model_name' + '.out_pickle', 'wb')
