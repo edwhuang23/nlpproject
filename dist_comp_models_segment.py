@@ -1,20 +1,3 @@
-# sections_start for when section starts
-# segment_loudness_max or segment_loudness_start for loudness of segment
-# segment_start, segment_timbre, and segment_pitches are important
-
-# Think about if a song has rock, classical, and rock, and that particular song is indicative of a rock song
-
-# segments_pitches for the 12 pitches of segment
-# segments_start to do the weighted sum of how long each segment is
-# Round to tenths for segments_pitch to decrease space
-
-# Train model on each segment and the correct genre
-
-# For testing we will get the probability distribution for one segment and then select the genre with highest probability
-
-# Get the genre distribution for each segment
-
-
 import h5py
 import pickle, os, argparse, random
 from numba import jit, cuda
@@ -92,52 +75,52 @@ def train(seg_comp_mode):
     loss_function = nn.CrossEntropyLoss(ignore_index=0)
 
     # Repeatedly train RNN model
-    NUM_EPOCHS = 6
-    BATCH_SIZE = 120
+    NUM_EPOCHS = 10
+    BATCH_SIZE = 32
     train_data = []
 
-    for song in trainingText:
-        genre = genre_dict[song[:-3]]
-        for i in range(len(trainingText[song])):
-            section = trainingText[song][i]
-            for segment in section:
-                train_data.append([vocab_indexed[str(segment)], genres_indexed[genre]])
+    # for song in trainingText:
+    #     genre = genre_dict[song[:-3]]
+    #     for i in range(len(trainingText[song])):
+    #         section = trainingText[song][i]
+    #         for segment in section:
+    #             train_data.append([vocab_indexed[str(segment)], genres_indexed[genre]])
 
-    train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
+    # train_dataloader = iter(DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True))
     
     for epoch in range(NUM_EPOCHS):
         print("Epoch", epoch + 1, "/", NUM_EPOCHS)
-        for i in range(0, len(trainingText.keys()), BATCH_SIZE):
-            X_batch, Y_batch = next(train_dataloader)
-            model.zero_grad()
-            outputs = model(X_batch.clone().detach())
-            loss = loss_function(outputs, Y_batch.clone().detach())
-            loss.backward()
-            optimizer.step()
-
-        # trainingTextKeys = list(trainingText.keys())
-        # random.shuffle(trainingTextKeys)
-        # for song in trainingTextKeys:
-        #     if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
-        #     genre = genre_dict[song[:-3]]
-        #     for i in range(len(trainingText[song])):
-        #         section = trainingText[song][i]
-        #         model.zero_grad()
-        #         segments_indcs = [vocab_indexed[str(segment)] for segment in section]
-        #         segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
-        #         print('Segments Tensor', segments_tensor)
-        #         genre_scores = model(segments_tensor)
-        #         genre_idx = [genres_indexed[genre]] * len(section)
-        #         genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
-        #         # dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
-        #         # print(dist_out)
-        #         print('Genre Score', genre_scores)
-        #         print('Genre Tensor', genre_tensor)
-        #         loss = loss_function(genre_scores, genre_tensor)
-        #         loss.backward()
-        #         optimizer.step()
-        #     progress += 1
-        model_filename = 'model_' + seg_comp_mode + '_' + str(epoch + 1) + '.torch'
+    #     for i in range(0, len(trainingText.keys()), BATCH_SIZE):
+    #         X_batch, Y_batch = next(train_dataloader)
+    #         model.zero_grad()
+    #         outputs = model(X_batch.clone().detach())
+    #         loss = loss_function(outputs, Y_batch.clone().detach())
+    #         loss.backward()
+    #         optimizer.step()
+        progress = 0
+        trainingTextKeys = list(trainingText.keys())
+        random.shuffle(trainingTextKeys)
+        for song in trainingTextKeys:
+            if progress % 50 == 0 : print("Trained on", progress, "out of", len(trainingText.keys()), "songs")
+            genre = genre_dict[song[:-3]]
+            for i in range(len(trainingText[song])):
+                section = trainingText[song][i]
+                model.zero_grad()
+                segments_indcs = [vocab_indexed[str(segment)] for segment in section]
+                segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
+                #print('Segments Tensor', segments_tensor)
+                genre_scores = model(segments_tensor)
+                genre_idx = [genres_indexed[genre]] * len(section)
+                genre_tensor = torch.tensor(genre_idx, dtype=torch.long)
+                # dist_out = distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i])
+                # print(dist_out)
+                #print('Genre Score', genre_scores)
+                #print('Genre Tensor', genre_tensor)
+                loss = loss_function(genre_scores, genre_tensor)
+                loss.backward()
+                optimizer.step()
+            progress += 1
+        model_filename = 'model_' + seg_comp_mode + '_' + str(epoch + 1) + 'e_limited_pr' + '.torch'
         torch.save(model.state_dict(), model_filename)
     return
 
@@ -235,7 +218,7 @@ def preprocessing(isTrain):
     print(segmentCount)
 
     # Dump testing_durations
-    durations_pickle = open('training_durations_limited_pr.pickle' if isTrain else 'testing_durations.pickle', 'wb')
+    durations_pickle = open('training_durations_limited_pr.pickle' if isTrain else 'testing_durations_limited_pr.pickle', 'wb')
     pickle.dump(duration_info, durations_pickle)
     durations_pickle.close()
     
@@ -276,23 +259,23 @@ def preprocessing(isTrain):
 
     # Only dump if training
     if isTrain:
-        vocab_pickle = open('vocab-4.0.pickle_limited_pr', 'wb')
+        vocab_pickle = open('vocab-4.0_limited_pr.pickle', 'wb')
         pickle.dump(vocab_indexed, vocab_pickle)
         vocab_pickle.close()
         
-        vocab_freq_pickle = open('vocab_freq-4.0.pickle_limited_pr', 'wb')
+        vocab_freq_pickle = open('vocab_freq-4.0_limited_pr.pickle', 'wb')
         pickle.dump(vocab_freq, vocab_freq_pickle)
         vocab_freq_pickle.close()
 
-        genres_pickle = open('genres.pickle_limited_pr', 'wb')
+        genres_pickle = open('genres_limited_pr.pickle', 'wb')
         pickle.dump(genres_indexed, genres_pickle)
         genres_pickle.close()
         
-        genres_freq_pickle = open('genres_freq.pickle_limited_pr', 'wb')
+        genres_freq_pickle = open('genres_freq_limited_pr.pickle', 'wb')
         pickle.dump(genres_freq, genres_freq_pickle)
         genres_freq_pickle.close()
     
-    training_texts = open('training_mod-4.0.pickle_limited_pr' if isTrain else 'testing_mod-4.0.pickle', 'wb')
+    training_texts = open('training_mod-4.0_limited_pr.pickle' if isTrain else 'testing_mod-4.0_limited_pr.pickle', 'wb')
     pickle.dump(trainingText, training_texts)
     training_texts.close()
     return
@@ -413,7 +396,7 @@ def test(seg_comp_mode, sec_comp_mode, model_name):
             segments_indcs = [ (vocab_indexed[UNKA] if str(segment) not in vocab_indexed else vocab_indexed[str(segment)]) for segment in section]
             segments_tensor = torch.tensor(segments_indcs, dtype=torch.long)
             genre_scores = model(segments_tensor)
-            print(genre_scores)
+            #print(genre_scores)
             sec_dists_out.append(distribution_compiler(genre_scores, seg_comp_mode, genres_indexed, duration_info[song][i]))
             sec_dur_info.append(0.0)
             for seg_dur in duration_info[song][i] : sec_dur_info[i] += seg_dur
