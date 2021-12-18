@@ -1,4 +1,4 @@
-# EECS 595 Natural Language Processing Final Project: Song Genre Classification based on Audio Metadata
+# EECS 595 Natural Language Processing Final Project: Song Genre Classification from Pitch Data
 
 These instructions will guide you to reproduce the results found in our paper. Note that the instructions are geared towards Mac users. Also note that the datasets we used are already included in the repo. If you would like to take a look at the original datasets, the Million Song Dataset can be found [here](http://millionsongdataset.com/), and the MSD Allmusic Genre Dataset can be found [here](http://www.ifs.tuwien.ac.at/mir/msd/partitions/msd-MAGD-genreAssignment.cls).
 
