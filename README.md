@@ -35,7 +35,6 @@ Evaluate the `model_PV_2e.torch` model in PV segment compilation mode and WGF se
 `python dist_comp_section.py --seg_comp_mode PV --sec_comp_mode WGF --model-in model_PV_2e.torch`
 
 <br/><br/>
-
 Run a Keras model
 
 `python vanilla_keras.py`
