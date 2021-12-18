@@ -10,7 +10,7 @@ These instructions will guide you to reproduce the results found in our paper. N
 5. Install required dependencies for the code to run with `pip install -r requirements.txt`
 
 # Running the Code
-The main file used to run the code is `dist_comp_segment.py`, `dist_comp_section.py`, or `dist_comp_song.py` depending on what distribution you would like to train on. As you can see, we have already trained and saved models in the `*.torch` files, and we can use these models to reproduce the results found in our paper.
+The main file used to run the code is `dist_comp_segment.py`, `dist_comp_section.py`, `dist_comp_song.py`, or `vanilla_keras.py` depending on what distribution you would like to train on and whether you would like to use the Keras model. As you can see, we have already trained and saved models in the `*.torch` files, and we can use these models to reproduce the results found in our paper.
 
 Before we get to actual commands to execute our code, we will introduce the command options available for usage. If some of these options do not make sense, please read the paper first to understand context.
 
@@ -22,7 +22,7 @@ Before we get to actual commands to execute our code, we will introduce the comm
 
 `--sec_comp_mode [PV | WPV | GF | WGF]`: Option to specify section compilation mode in training.
 
-`--model_in <model_name>`: Option to specify a model to evaluate. This option must be used for evluation.
+`--model_in <model_name>`: Option to specify a model to evaluate. This option must be used for evaluation.
 
 # Example Commands
 Train a model in PV segment compilation mode utilizing the GPU:
@@ -33,3 +33,9 @@ Train a model in PV segment compilation mode utilizing the GPU:
 Evaluate the `model_PV_2e.torch` model in PV segment compilation mode and WGF section compilation mode:
 
 `python dist_comp_section.py --seg_comp_mode PV --sec_comp_mode WGF --model-in model_PV_2e.torch`
+
+<br/><br/>
+
+Run a Keras model
+
+`python vanilla_keras.py`
