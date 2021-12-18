@@ -22,7 +22,7 @@ Before we get to actual commands to execute our code, we will introduce the comm
 
 `--sec_comp_mode [PV | WPV | GF | WGF]`: Option to specify section compilation mode. This option is required when evaluating any `*.torch` model with `dist_comp_models_*.py`, and it is required for training with `dist_comp_models_song.py`.
 
-`--model_in <model_name>`: Option to specify a model to evaluate. This option is required when evaluating any `*.torch` model with `dist_comp_models_*.py`.
+`--model_in <model_name>`: Option to specify a model to evaluate. This option is required when evaluating any `*.torch` model with `dist_comp_models_*.py`. Do not include this option when evaluating with `vanilla_keras.py`.
 
 # Example Commands
 Train a model in PV segment compilation mode utilizing the GPU:
