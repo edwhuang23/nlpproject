@@ -37,4 +37,4 @@ Evaluate the `model_PV_2e.torch` model in PV segment compilation mode and WGF se
 
 Train a Keras model
 
-`python vanilla_keras.py --train`
+`python keras/vanilla_keras.py --train`
