@@ -3,4 +3,6 @@ env/
 dataset.tar.gz
 training_mod-4.0.pickle
 testing_mod-4.0.pickle
+training_mod-4.0_limited_pr.pickle
+dataset_limited_pr.tar.gz
 
