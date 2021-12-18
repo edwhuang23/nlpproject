@@ -33,6 +33,7 @@ Train a model in PV segment compilation mode utilizing the GPU:
 Evaluate the `model_WGF_6.torch` model in PV segment compilation mode and WGF section compilation mode:
 
 `python dist_comp_models_section.py --seg_comp_mode PV --sec_comp_mode WGF --model-in model_WGF_6.torch`
+<br/><br/>
 
 To train a Keras model, `cd` into the `keras` directory and run
 
